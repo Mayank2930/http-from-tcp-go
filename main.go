@@ -1,18 +1,23 @@
 package main
 
 import (
-	"os"
-	"fmt"
-	"log"
 	"bytes"
+	"fmt"
 	"io"
+	"log"
+	"net"
 )
 
-func getLinesChannel(f io.ReadCloser) <- chan string {
+func getLinesChannel(f io.ReadCloser) <-chan string {
 	out := make(chan string, 1)
 
-	go func(){
-		defer f.Close()
+	go func() {
+		defer func(f io.ReadCloser) {
+			err := f.Close()
+			if err != nil {
+				log.Printf("Error while closing f: %s", err)
+			}
+		}(f)
 		defer close(out)
 		str := ""
 		for {
@@ -25,7 +30,7 @@ func getLinesChannel(f io.ReadCloser) <- chan string {
 			data = data[:n]
 			if i := bytes.IndexByte(data, '\n'); i != -1 {
 				str += string(data[:i])
-				data = data[i + 1:]
+				data = data[i+1:]
 				out <- str
 				str = ""
 			}
@@ -41,16 +46,26 @@ func getLinesChannel(f io.ReadCloser) <- chan string {
 	return out
 }
 
-func  main()  {
-	f, err := os.Open("message.txt")
+func main() {
+	listener, err := net.Listen("tcp", ":42609")
 	if err != nil {
 		log.Fatal("Error", err)
 	}
-	defer f.Close()
+	//defer func(listener net.Listener) {
+	//	err := listener.Close()
+	//	if err != nil {
+	//		log.Printf("Error while closing f: %s", err)
+	//	}
+	//}(listener)
 
-	lines := getLinesChannel(f)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal("Error", err)
+		}
 
-	for line := range lines{
-		fmt.Printf("read: %s\n", line)
+		for line := range getLinesChannel(conn) {
+			fmt.Printf("read: %s\n", line)
+		}
 	}
 }
